@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ISCP Virtual Assistant — Demo</title>
+  <style>
+    /* ── Reset ───────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ── Page chrome (mimics ISCP header) ────────────────────── */
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      background: #f4f6f8;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #003087;   /* NHS dark blue */
+      color: #fff;
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      box-shadow: 0 2px 6px rgba(0,0,0,.25);
+    }
+    header img { height: 40px; }
+    header h1 { font-size: 1.2rem; font-weight: 700; letter-spacing: .3px; }
+    header span { font-size: .85rem; opacity: .75; }
+
+    .demo-banner {
+      background: #fff3cd;
+      border-bottom: 2px solid #ffc107;
+      text-align: center;
+      padding: 8px;
+      font-size: .85rem;
+      color: #856404;
+    }
+
+    .page-body {
+      max-width: 1100px;
+      margin: 40px auto;
+      padding: 0 20px;
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 32px;
+      align-items: start;
+    }
+
+    /* ── Fake page content (left column) ─────────────────────── */
+    .content-col h2 { color: #003087; font-size: 1.4rem; margin-bottom: 12px; }
+    .content-col p  { color: #333; line-height: 1.7; margin-bottom: 12px; font-size: .95rem; }
+    .content-col .link-list { list-style: disc; padding-left: 20px; color: #005eb8; }
+    .content-col .link-list li { margin-bottom: 6px; font-size: .9rem; }
+
+    /* ── Chat widget (right column) ──────────────────────────── */
+    #chat-widget {
+      background: #fff;
+      border: 1px solid #d0d5dd;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,.10);
+      display: flex;
+      flex-direction: column;
+      height: 600px;
+      overflow: hidden;
+      position: sticky;
+      top: 20px;
+    }
+
+    #chat-header {
+      background: #003087;
+      color: #fff;
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    #chat-header .avatar {
+      width: 36px; height: 36px; background: #005eb8;
+      border-radius: 50%; display: flex; align-items: center;
+      justify-content: center; font-size: 1.1rem; flex-shrink: 0;
+    }
+    #chat-header .info strong { display: block; font-size: .95rem; }
+    #chat-header .info small  { font-size: .75rem; opacity: .8; }
+    #chat-header .status-dot {
+      width: 8px; height: 8px; background: #00d26a;
+      border-radius: 50%; display: inline-block; margin-right: 4px;
+    }
+
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      scroll-behavior: smooth;
+    }
+
+    .msg {
+      max-width: 85%;
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: .88rem;
+      line-height: 1.55;
+      word-break: break-word;
+    }
+    .msg.bot {
+      background: #f0f4ff;
+      border: 1px solid #d5e0ff;
+      color: #1a1a2e;
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
+    }
+    .msg.user {
+      background: #003087;
+      color: #fff;
+      align-self: flex-end;
+      border-bottom-right-radius: 4px;
+    }
+    .msg.escalated {
+      background: #fff8e1;
+      border: 1px solid #ffc107;
+      color: #4a3500;
+    }
+    .msg.error {
+      background: #fdecea;
+      border: 1px solid #f5c6cb;
+      color: #721c24;
+    }
+
+    /* Render markdown-style bold/newlines */
+    .msg p  { margin-bottom: 6px; }
+    .msg p:last-child { margin-bottom: 0; }
+    .msg strong { font-weight: 700; }
+    .msg hr { border: none; border-top: 1px solid #ccc; margin: 8px 0; }
+
+    /* Typing indicator */
+    .typing-dots {
+      display: flex; gap: 4px; padding: 10px 14px;
+      background: #f0f4ff; border: 1px solid #d5e0ff;
+      border-radius: 12px; border-bottom-left-radius: 4px;
+      width: fit-content; align-self: flex-start;
+    }
+    .typing-dots span {
+      width: 7px; height: 7px; background: #003087;
+      border-radius: 50%; animation: bounce .9s infinite;
+    }
+    .typing-dots span:nth-child(2) { animation-delay: .15s; }
+    .typing-dots span:nth-child(3) { animation-delay: .30s; }
+    @keyframes bounce {
+      0%, 80%, 100% { transform: translateY(0); }
+      40% { transform: translateY(-6px); }
+    }
+
+    #chat-footer {
+      border-top: 1px solid #e5e7eb;
+      padding: 12px 14px;
+      background: #fafafa;
+    }
+    #chat-form {
+      display: flex;
+      gap: 8px;
+    }
+    #user-input {
+      flex: 1;
+      border: 1px solid #d0d5dd;
+      border-radius: 8px;
+      padding: 9px 12px;
+      font-size: .88rem;
+      outline: none;
+      resize: none;
+      min-height: 40px;
+      max-height: 100px;
+      font-family: inherit;
+      line-height: 1.4;
+    }
+    #user-input:focus { border-color: #003087; box-shadow: 0 0 0 2px rgba(0,48,135,.15); }
+    #send-btn {
+      background: #003087;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 9px 14px;
+      cursor: pointer;
+      font-size: .88rem;
+      font-weight: 600;
+      transition: background .2s;
+      align-self: flex-end;
+      min-width: 60px;
+    }
+    #send-btn:hover  { background: #00205b; }
+    #send-btn:disabled { background: #8fa3cc; cursor: not-allowed; }
+
+    .quick-replies {
+      display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px;
+    }
+    .qr-btn {
+      background: #fff; border: 1px solid #003087; color: #003087;
+      border-radius: 16px; padding: 5px 12px; font-size: .78rem;
+      cursor: pointer; transition: all .2s;
+    }
+    .qr-btn:hover { background: #003087; color: #fff; }
+
+    #escalation-bar {
+      display: none;
+      background: #fff3cd;
+      border-top: 1px solid #ffc107;
+      padding: 10px 14px;
+      font-size: .8rem;
+      color: #856404;
+      text-align: center;
+    }
+    #escalation-bar a { color: #003087; font-weight: 700; }
+
+    /* ── Responsive ───────────────────────────────────────────── */
+    @media (max-width: 750px) {
+      .page-body { grid-template-columns: 1fr; }
+      #chat-widget { position: static; height: 520px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Fake ISCP Header -->
+<header>
+  <div style="background:#fff;border-radius:4px;padding:4px 8px;font-weight:900;color:#003087;font-size:1rem;letter-spacing:1px;">ISCP</div>
+  <div>
+    <h1>Intercollegiate Surgical Curriculum Programme</h1>
+    <span>Surgical &amp; Dental Training Curricula — UK &amp; Ireland</span>
+  </div>
+</header>
+
+<div class="demo-banner">
+  Demo — Virtual Assistant Prototype (not yet live on iscp.ac.uk)
+</div>
+
+<div class="page-body">
+
+  <!-- Left: fake page content -->
+  <div class="content-col">
+    <h2>Welcome to ISCP</h2>
+    <p>
+      The Intercollegiate Surgical Curriculum Programme (ISCP) is the official platform
+      for surgical and dental training curricula across the United Kingdom and Ireland.
+      It is managed by the Joint Committee on Surgical Training (JCST).
+    </p>
+    <p>
+      ISCP hosts your training record, workplace-based assessments (WBAs),
+      learning agreements, Annual Review of Competence Progression (ARCP)
+      documentation, and free professional development e-courses.
+    </p>
+    <p>
+      Use the <strong>Virtual Assistant</strong> on the right for instant help with
+      common questions, or contact our helpdesk if your query is complex or urgent.
+    </p>
+    <ul class="link-list">
+      <li>Surgical curricula (pre and post-August 2021)</li>
+      <li>Dental surgery curricula (from September 2024)</li>
+      <li>JCST Fellowship curriculum</li>
+      <li>Surgical Advanced Clinical Practitioner (SACP) curriculum</li>
+      <li>MSF Raters portal</li>
+      <li>Free professional e-courses</li>
+    </ul>
+  </div>
+
+  <!-- Right: chat widget -->
+  <div id="chat-widget">
+    <div id="chat-header">
+      <div class="avatar">🤖</div>
+      <div class="info">
+        <strong>ISCP Virtual Assistant</strong>
+        <small><span class="status-dot"></span>Online — here to help</small>
+      </div>
+    </div>
+
+    <div id="messages">
+      <!-- Welcome message injected by JS -->
+    </div>
+
+    <div id="escalation-bar">
+      Need a human? Call <a href="tel:02078696299">020 7869 6299</a> or email
+      <a href="mailto:helpdesk@iscp.ac.uk">helpdesk@iscp.ac.uk</a>
+      (Mon–Fri, 9am–5pm)
+    </div>
+
+    <div id="chat-footer">
+      <form id="chat-form" autocomplete="off">
+        <textarea
+          id="user-input"
+          placeholder="Ask me anything about ISCP…"
+          rows="1"
+        ></textarea>
+        <button type="submit" id="send-btn">Send</button>
+      </form>
+      <div class="quick-replies" id="quick-replies">
+        <button class="qr-btn">Reset my password</button>
+        <button class="qr-btn">How do I log a WBA?</button>
+        <button class="qr-btn">Which curriculum applies to me?</button>
+        <button class="qr-btn">MSF rater not responding</button>
+        <button class="qr-btn">Contact the helpdesk</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const messagesEl   = document.getElementById("messages");
+  const form         = document.getElementById("chat-form");
+  const inputEl      = document.getElementById("user-input");
+  const sendBtn      = document.getElementById("send-btn");
+  const escBar       = document.getElementById("escalation-bar");
+  const quickReplies = document.getElementById("quick-replies");
+
+  // Conversation history sent to backend
+  const history = [];
+
+  // ── Helpers ────────────────────────────────────────────────────
+
+  function scrollDown() {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  // Very lightweight markdown renderer (bold, hr, line breaks)
+  function renderMarkdown(text) {
+    return text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/^---$/gm, "<hr>")
+      .replace(/\n/g, "<br>");
+  }
+
+  function appendMessage(role, text, extra = "") {
+    const div = document.createElement("div");
+    div.className = "msg " + role + (extra ? " " + extra : "");
+    div.innerHTML = renderMarkdown(text);
+    messagesEl.appendChild(div);
+    scrollDown();
+    return div;
+  }
+
+  function showTyping() {
+    const dots = document.createElement("div");
+    dots.className = "typing-dots";
+    dots.id = "typing";
+    dots.innerHTML = "<span></span><span></span><span></span>";
+    messagesEl.appendChild(dots);
+    scrollDown();
+  }
+
+  function removeTyping() {
+    const t = document.getElementById("typing");
+    if (t) t.remove();
+  }
+
+  // ── Send message ───────────────────────────────────────────────
+
+  async function sendMessage(text) {
+    if (!text.trim()) return;
+
+    // Hide quick replies after first interaction
+    quickReplies.style.display = "none";
+
+    appendMessage("user", text);
+    history.push({ role: "user", content: text });
+
+    inputEl.value = "";
+    inputEl.style.height = "40px";
+    sendBtn.disabled = true;
+    showTyping();
+
+    try {
+      const res = await fetch("/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: history }),
+      });
+
+      removeTyping();
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Unknown error" }));
+        appendMessage("bot", "Sorry, something went wrong: " + (err.error || res.statusText), "error");
+        return;
+      }
+
+      const data = await res.json();
+      const reply = data.reply || "Sorry, I didn't get a response.";
+      const isEscalated = data.escalated;
+
+      appendMessage("bot", reply, isEscalated ? "escalated" : "");
+      history.push({ role: "assistant", content: reply });
+
+      if (isEscalated) {
+        escBar.style.display = "block";
+      }
+
+    } catch (e) {
+      removeTyping();
+      appendMessage("bot", "Network error — please check the server is running.", "error");
+    } finally {
+      sendBtn.disabled = false;
+      inputEl.focus();
+    }
+  }
+
+  // ── Form submit ────────────────────────────────────────────────
+
+  form.addEventListener("submit", e => {
+    e.preventDefault();
+    sendMessage(inputEl.value.trim());
+  });
+
+  // Send on Enter (Shift+Enter = new line)
+  inputEl.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      form.dispatchEvent(new Event("submit"));
+    }
+  });
+
+  // Auto-grow textarea
+  inputEl.addEventListener("input", () => {
+    inputEl.style.height = "40px";
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 100) + "px";
+  });
+
+  // ── Quick reply buttons ────────────────────────────────────────
+
+  document.querySelectorAll(".qr-btn").forEach(btn => {
+    btn.addEventListener("click", () => sendMessage(btn.textContent));
+  });
+
+  // ── Welcome message ────────────────────────────────────────────
+
+  appendMessage(
+    "bot",
+    "Hello! I'm the ISCP Virtual Assistant. I can help you with:\n\n" +
+    "- **Logging in or registering**\n" +
+    "- **Workplace-based assessments (WBAs)**\n" +
+    "- **Curriculum questions**\n" +
+    "- **MSF feedback**\n" +
+    "- **Technical issues**\n\n" +
+    "For complex account problems or urgent matters, I'll connect you with our helpdesk team. What can I help you with today?"
+  );
+</script>
+
+</body>
+</html>
